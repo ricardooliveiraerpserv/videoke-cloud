@@ -1,0 +1,18 @@
+# Workspace MÍNIMO só p/ a imagem da nuvem: shared + core + downloader (sem karaokê).
+# Copiado como /app/pyproject.toml no Dockerfile.
+[project]
+name = "videoke-cloud"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["kk-shared", "kk-core", "kk-downloader"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["shared", "library_core", "downloader"]
+
+[tool.uv.sources]
+kk-shared = { workspace = true }
+kk-core = { workspace = true }
+kk-downloader = { workspace = true }

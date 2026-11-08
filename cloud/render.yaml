@@ -1,0 +1,20 @@
+# Render Blueprint — API da nuvem do Videokê.
+# No Render: New → Blueprint → aponte para este repo (branch videoke-mobile).
+services:
+  - type: web
+    name: videoke-cloud-api
+    runtime: docker
+    dockerfilePath: ./cloud/Dockerfile
+    dockerContext: .
+    region: ohio             # = us-east-2 do Supabase (projeto TOKEN VIDEOKE, banco perto)
+    plan: free               # valida o /resolve a custo 0 (dorme); subir p/ 'starter' (~US$7/mês) qdo for pra valer
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # Session pooler (IPv4), projeto TOKEN VIDEOKE / usuário dedicado videoke_app:
+                             # postgresql://videoke_app.xydvxmrusrxcnvzhqzct:<senha>@aws-0-us-east-2.pooler.supabase.com:5432/postgres?sslmode=require
+                             # (porta 5432 = SESSION mode; NÃO a conexão direta, que é IPv6-only e o Render não alcança)
+      - key: DB_SCHEMA
+        value: videoke       # isola num schema próprio (compartilha a instância do Mês Redondo)
+      - key: VK_ADMIN_TOKEN
+        generateValue: true  # token admin p/ o sync; copie p/ usar no worker
