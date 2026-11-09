@@ -407,7 +407,6 @@ POC_HTML = r"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
     <button class="pill" data-rit="90">90</button><button class="pill" data-rit="95">95</button>
     <button class="pill on" data-rit="100">100</button><button class="pill" data-rit="105">105</button>
     <button class="pill" data-rit="110">110</button></div>
-  <button id="sing" style="width:100%;margin-top:10px;font-size:18px;padding:15px">▶ CANTAR</button>
   <div id="offbar" style="display:none;align-items:center;justify-content:space-between;margin-top:10px;padding:9px 12px;background:#161E31;border-radius:10px;font-size:13px;color:#9AA6C0"></div>
   <div class="list" id="list"></div>
   <div id="more"></div>
@@ -483,7 +482,7 @@ function rowHTML(s){ return `<div class="it" data-id="${s.id}"><div><b>${esc(s.t
   `<div style="display:flex;align-items:center;gap:8px"><span class="d">${fmt(s.dur)} ${esc(s.fmt)}</span>`+
   `<button class="dlb" data-dl="${s.id}" title="Baixar p/ cantar offline" style="background:#20304d;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-size:14px;line-height:1">${offHas(s.id)?'✓':'⬇'}</button></div></div>`; }
 function wireRows(){
-  $$('#list .it').forEach(el=>el.onclick=()=>{SEL=ROWMAP[el.dataset.id];$$('#list .it').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');});
+  $$('#list .it').forEach(el=>el.onclick=()=>{SEL=ROWMAP[el.dataset.id];$$('#list .it').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');startSinging();});
   $$('#list .dlb').forEach(b=>b.onclick=ev=>{ev.stopPropagation();toggleOffline(ROWMAP[b.dataset.dl],b);});
 }
 function render(items, append){
@@ -839,7 +838,6 @@ async function startFxTest(){
   let info;try{info=await resolveSrc(SEL.id,'hot');}catch(e){log('❌ '+e.message);setStatus('erro: '+e.message,'bad');return;}
   await playInto(active,info,performance.now()-t0,'fx');
 }
-$('#sing').onclick=startSinging;
 const _sn=$('#singer'); if(_sn){_sn.value=localStorage.getItem('vk_singer')||'';_sn.onchange=()=>localStorage.setItem('vk_singer',_sn.value);}
 if('serviceWorker'in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 loadCategories().then(loadCatalog);
