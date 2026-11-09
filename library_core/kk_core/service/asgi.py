@@ -56,7 +56,9 @@ def create_app(client=None) -> FastAPI:
     @app.get("/manifest.webmanifest")
     def manifest() -> Response:
         from .poc import MANIFEST
-        return Response(MANIFEST, media_type="application/manifest+json")
+        # na nuvem a página é /m (no desktop é /m/poc) → start_url correto p/ o PWA
+        return Response(MANIFEST.replace('"/m/poc"', '"/m"'),
+                        media_type="application/manifest+json")
 
     @app.get("/sw.js")
     def sw_js() -> Response:

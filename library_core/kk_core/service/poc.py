@@ -201,10 +201,61 @@ MANIFEST = json.dumps({
 
 
 SW_JS = r"""
-// Service worker mínimo (B4): só habilita instalação. Cache offline = Fase H.
-self.addEventListener('install', e => self.skipWaiting());
-self.addEventListener('activate', e => self.clients.claim());
-self.addEventListener('fetch', e => {});  // passthrough (rede normal)
+// G2 — offline real. Casca + catálogo (navega offline) + mídia baixada (canta
+// offline). A mídia (R2) é cache-first COM suporte a Range (o <video> pede faixas
+// de bytes; sem isso o vídeo não toca do cache). O download em si é feito pela
+// página (window.caches), aqui só servimos.
+const SHELL='vk-shell-v2', MEDIA='vk-media-v1';
+const SHELL_ASSETS=['/m','/poc/shifter.js','/manifest.webmanifest','/poc/icon-192.png','/poc/icon-512.png'];
+
+self.addEventListener('install', e=>{ e.waitUntil((async()=>{
+  const c=await caches.open(SHELL);
+  await Promise.allSettled(SHELL_ASSETS.map(u=>c.add(u)));  // tolerante a 404 (desktop usa /m/poc)
+  await self.skipWaiting();
+})()); });
+
+self.addEventListener('activate', e=>{ e.waitUntil((async()=>{
+  const ks=await caches.keys();
+  await Promise.all(ks.filter(k=>k.startsWith('vk-')&&k!==SHELL&&k!==MEDIA).map(k=>caches.delete(k)));
+  await self.clients.claim();
+})()); });
+
+function isMedia(u){ return /r2\.dev|r2\.cloudflarestorage|\.mp4(\?|$)/i.test(u); }
+
+async function serveMedia(req){
+  const cache=await caches.open(MEDIA);
+  const hit=await cache.match(req.url,{ignoreVary:true});
+  if(!hit){ try{ return await fetch(req); }catch(_){ return new Response('',{status:504}); } }
+  const range=req.headers.get('range');
+  if(!range) return hit;                         // sem Range: devolve inteiro
+  const buf=await hit.arrayBuffer();
+  const m=/bytes=(\d+)-(\d*)/.exec(range)||[0,'0',''];
+  let start=+m[1]||0, end=m[2]?+m[2]:buf.byteLength-1;
+  if(end>=buf.byteLength) end=buf.byteLength-1;
+  const chunk=buf.slice(start,end+1);
+  return new Response(chunk,{status:206,headers:{
+    'Content-Range':'bytes '+start+'-'+end+'/'+buf.byteLength,
+    'Accept-Ranges':'bytes','Content-Length':String(chunk.byteLength),
+    'Content-Type':hit.headers.get('Content-Type')||'video/mp4',
+    'Access-Control-Allow-Origin':'*'}});
+}
+
+self.addEventListener('fetch', e=>{
+  const req=e.request; if(req.method!=='GET') return;
+  const url=req.url;
+  if(isMedia(url)){ e.respondWith(serveMedia(req)); return; }        // mídia: cache-first (+Range)
+  if(req.mode==='navigate'){                                         // abrir app: network, cai p/ casca
+    e.respondWith((async()=>{ try{ return await fetch(req); }
+      catch(_){ const c=await caches.open(SHELL); return (await c.match('/m'))||Response.error(); } })()); return; }
+  const u=new URL(url); if(u.origin!==self.location.origin) return;  // outros cross-origin: rede
+  if(/^\/poc\/(catalog|categories|search)/.test(u.pathname)){        // catálogo/busca: network+cache
+    e.respondWith((async()=>{ try{ const r=await fetch(req); (await caches.open(SHELL)).put(req,r.clone()); return r; }
+      catch(_){ const m=await caches.match(req,{ignoreVary:true}); return m||new Response('{"items":[]}',{headers:{'Content-Type':'application/json'}}); } })()); return; }
+  if(/^\/(poc\/shifter\.js|manifest\.webmanifest|poc\/icon-)/.test(u.pathname)){  // casca: network+cache fallback
+    e.respondWith((async()=>{ try{ const r=await fetch(req); (await caches.open(SHELL)).put(req,r.clone()); return r; }
+      catch(_){ return (await caches.match(req))||Response.error(); } })()); return; }
+  // resto: rede normal (passthrough)
+});
 """
 
 
@@ -356,6 +407,7 @@ POC_HTML = r"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
     <button class="pill on" data-rit="100">100</button><button class="pill" data-rit="105">105</button>
     <button class="pill" data-rit="110">110</button></div>
   <button id="sing" style="width:100%;margin-top:10px;font-size:18px;padding:15px">▶ CANTAR</button>
+  <div id="offbar" style="display:none;align-items:center;justify-content:space-between;margin-top:10px;padding:9px 12px;background:#161E31;border-radius:10px;font-size:13px;color:#9AA6C0"></div>
   <div class="list" id="list"></div>
   <div id="log" style="display:none"></div>
   <div class="hint" style="text-align:center;margin-top:12px;opacity:.45;font-size:11px">Videokê Família Silva · v19</div>
@@ -426,9 +478,13 @@ async function pickCat(id){
 }
 function render(items){
   $('#list').innerHTML=items.slice(0,600).map(s=>
-    `<div class="it" data-id="${s.id}"><div><b>${esc(s.title)}</b><small>${esc(s.artist)}</small></div><span class="d">${fmt(s.dur)} ${esc(s.fmt)}</span></div>`).join('')
+    `<div class="it" data-id="${s.id}"><div><b>${esc(s.title)}</b><small>${esc(s.artist)}</small></div>`+
+    `<div style="display:flex;align-items:center;gap:8px"><span class="d">${fmt(s.dur)} ${esc(s.fmt)}</span>`+
+    `<button class="dlb" data-dl="${s.id}" title="Baixar p/ cantar offline" style="background:#20304d;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-size:14px;line-height:1">${offHas(s.id)?'✓':'⬇'}</button></div></div>`).join('')
     || '<div class="it" style="color:#9AA6C0">Nada encontrado.</div>';
   $$('#list .it').forEach(el=>el.onclick=()=>{SEL=items.find(x=>x.id===el.dataset.id);$$('#list .it').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');});
+  $$('#list .dlb').forEach(b=>b.onclick=ev=>{ev.stopPropagation();toggleOffline(items.find(x=>x.id===b.dataset.dl),b);});
+  updateOffbar();
 }
 let _qt=null;
 $('#q').oninput=e=>{
@@ -440,6 +496,50 @@ $('#q').oninput=e=>{
     try{ const r=await fetch('/poc/search?q='+encodeURIComponent(q)); const j=await r.json(); render(j.items||[]); }catch(_){}
   }, 250);
 };
+
+// ----- G2b: offline (baixar músicas p/ cantar sem internet)
+const VK_MEDIA='vk-media-v1';
+function offStore(){ try{return JSON.parse(localStorage.getItem('vk_offline')||'{}');}catch(_){return {};} }
+function offSave(o){ try{localStorage.setItem('vk_offline',JSON.stringify(o));}catch(_){ } }
+function offHas(id){ return !!offStore()[id]; }
+function fmtMB(b){ return (b/1048576).toFixed(0)+' MB'; }
+function updateOffbar(){
+  const bar=$('#offbar'); if(!bar)return;
+  const o=offStore(), ids=Object.keys(o);
+  if(!ids.length){ bar.style.display='none'; return; }
+  const tot=ids.reduce((a,k)=>a+(o[k].size||0),0);
+  bar.style.display='flex';
+  bar.innerHTML='<span>📥 '+ids.length+' offline · '+fmtMB(tot)+'</span>'+
+    '<button onclick="clearOffline()" style="background:#3d1a12;color:#F87171;border:0;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:700">Limpar offline</button>';
+}
+async function toggleOffline(s,btn){
+  if(!s||!('caches'in window)){ setStatus('Offline não suportado neste navegador','warn'); return; }
+  const o=offStore();
+  if(o[s.id]){ await removeOffline(s.id); if(btn)btn.textContent='⬇'; updateOffbar(); return; }
+  if(!navigator.onLine){ setStatus('Sem internet — baixe com conexão','warn'); return; }
+  if(btn){btn.textContent='…';btn.disabled=true;}
+  try{
+    const info=await resolveSrc(s.id,'auto');
+    const url=(info&&(info.kind==='cloud_cache'||info.kind==='local'))?info.uri:null;
+    if(!url) throw new Error('não cacheada na nuvem');
+    const resp=await fetch(url,{mode:'cors'}); if(!resp.ok) throw new Error('HTTP '+resp.status);
+    await (await caches.open(VK_MEDIA)).put(url, resp.clone());
+    const blob=await resp.blob();
+    const st=offStore(); st[s.id]={title:s.title,artist:s.artist,url:url,size:blob.size}; offSave(st);
+    if(btn)btn.textContent='✓';
+  }catch(e){ if(btn)btn.textContent='⬇'; setStatus('Falha ao baixar: '+e.message,'bad'); }
+  finally{ if(btn)btn.disabled=false; updateOffbar(); }
+}
+async function removeOffline(id){
+  const o=offStore(), rec=o[id]; if(!rec)return;
+  try{ await (await caches.open(VK_MEDIA)).delete(rec.url); }catch(_){}
+  delete o[id]; offSave(o);
+}
+async function clearOffline(){
+  try{ await caches.delete(VK_MEDIA); }catch(_){}
+  localStorage.removeItem('vk_offline');
+  $$('#list .dlb').forEach(b=>b.textContent='⬇'); updateOffbar();
+}
 
 // ----- áudio
 let audioMode='—';   // worklet | scriptprocessor | nativo
