@@ -37,14 +37,15 @@ def _light_song(s) -> dict:
             "dur": (v.duration_s if v else 0), "fmt": fmt}
 
 
-def catalog(client, limit: int = 400, category: str | None = None) -> dict:
-    """Lista leve p/ o celular. Sem categoria → browse_rows (leve). Com categoria
-    → browse_by_category."""
+def catalog(client, limit: int = 300, category: str | None = None,
+            after: str | None = None) -> dict:
+    """Lista leve p/ o celular. Sem categoria → browse_rows paginado (cursor `after`
+    → `next`). Com categoria → browse_by_category."""
     from kk_shared.contracts.dtos import PageReq
     if category:
         page = client.browse_by_category(category, PageReq(limit=2000))
         return {"items": [_light_song(s) for s in page.items]}
-    page = client.browse_rows(PageReq(limit=limit))
+    page = client.browse_rows(PageReq(limit=limit, after=after))
     items = [{
         "id": r.id,
         "title": r.title,
@@ -52,7 +53,7 @@ def catalog(client, limit: int = 400, category: str | None = None) -> dict:
         "dur": r.duration_s,
         "fmt": r.format_label or "",
     } for r in page.items]
-    return {"items": items}
+    return {"items": items, "next": page.next_cursor}
 
 
 def search(client, query: str) -> dict:
@@ -409,6 +410,7 @@ POC_HTML = r"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
   <button id="sing" style="width:100%;margin-top:10px;font-size:18px;padding:15px">▶ CANTAR</button>
   <div id="offbar" style="display:none;align-items:center;justify-content:space-between;margin-top:10px;padding:9px 12px;background:#161E31;border-radius:10px;font-size:13px;color:#9AA6C0"></div>
   <div class="list" id="list"></div>
+  <div id="more"></div>
   <div id="log" style="display:none"></div>
   <div class="hint" style="text-align:center;margin-top:12px;opacity:.45;font-size:11px">Videokê Família Silva · v19</div>
 </div>
@@ -460,7 +462,7 @@ let CURCAT=null;   // categoria selecionada (null = todas)
 async function loadCatalog(){
   CURCAT=null;
   $$('#chips button').forEach(b=>b.classList.toggle('on', b.dataset.cat===''));
-  const r=await fetch('/poc/catalog');const j=await r.json();render(j.items||[]);
+  const r=await fetch('/poc/catalog');const j=await r.json();render(j.items||[], false);setMore(j.next);
 }
 async function loadCategories(){
   try{ const r=await fetch('/poc/categories'); const j=await r.json();
@@ -474,17 +476,35 @@ async function pickCat(id){
   $('#q').value=''; CURCAT=id||null;
   $$('#chips button').forEach(b=>b.classList.toggle('on',b.dataset.cat===(id||'')));
   if(!CURCAT){ return loadCatalog(); }
-  const r=await fetch('/poc/catalog?category='+encodeURIComponent(CURCAT)); const j=await r.json(); render(j.items||[]);
+  const r=await fetch('/poc/catalog?category='+encodeURIComponent(CURCAT)); const j=await r.json(); render(j.items||[], false); setMore(null);
 }
-function render(items){
-  $('#list').innerHTML=items.slice(0,600).map(s=>
-    `<div class="it" data-id="${s.id}"><div><b>${esc(s.title)}</b><small>${esc(s.artist)}</small></div>`+
-    `<div style="display:flex;align-items:center;gap:8px"><span class="d">${fmt(s.dur)} ${esc(s.fmt)}</span>`+
-    `<button class="dlb" data-dl="${s.id}" title="Baixar p/ cantar offline" style="background:#20304d;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-size:14px;line-height:1">${offHas(s.id)?'✓':'⬇'}</button></div></div>`).join('')
-    || '<div class="it" style="color:#9AA6C0">Nada encontrado.</div>';
-  $$('#list .it').forEach(el=>el.onclick=()=>{SEL=items.find(x=>x.id===el.dataset.id);$$('#list .it').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');});
-  $$('#list .dlb').forEach(b=>b.onclick=ev=>{ev.stopPropagation();toggleOffline(items.find(x=>x.id===b.dataset.dl),b);});
-  updateOffbar();
+let ROWMAP={}, NEXT=null, LOADING=false;
+function rowHTML(s){ return `<div class="it" data-id="${s.id}"><div><b>${esc(s.title)}</b><small>${esc(s.artist)}</small></div>`+
+  `<div style="display:flex;align-items:center;gap:8px"><span class="d">${fmt(s.dur)} ${esc(s.fmt)}</span>`+
+  `<button class="dlb" data-dl="${s.id}" title="Baixar p/ cantar offline" style="background:#20304d;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-size:14px;line-height:1">${offHas(s.id)?'✓':'⬇'}</button></div></div>`; }
+function wireRows(){
+  $$('#list .it').forEach(el=>el.onclick=()=>{SEL=ROWMAP[el.dataset.id];$$('#list .it').forEach(e=>e.classList.remove('sel'));el.classList.add('sel');});
+  $$('#list .dlb').forEach(b=>b.onclick=ev=>{ev.stopPropagation();toggleOffline(ROWMAP[b.dataset.dl],b);});
+}
+function render(items, append){
+  if(!append) ROWMAP={};
+  items.forEach(s=>ROWMAP[s.id]=s);
+  const html=items.map(rowHTML).join(''); const L=$('#list');
+  if(append) L.insertAdjacentHTML('beforeend', html);
+  else L.innerHTML = html || '<div class="it" style="color:#9AA6C0">Nada encontrado.</div>';
+  wireRows(); updateOffbar();
+}
+function setMore(next){
+  NEXT=next||null; const m=$('#more'); if(!m)return;
+  if(NEXT){ m.innerHTML='<button id="moreb" style="width:100%;margin-top:10px;padding:12px;background:#20304d;color:#fff;border:0;border-radius:10px;font-weight:700">Carregar mais ↓</button>'; $('#moreb').onclick=loadMore; }
+  else m.innerHTML='';
+}
+async function loadMore(){
+  if(!NEXT||LOADING)return; LOADING=true;
+  const b=$('#moreb'); if(b){b.textContent='Carregando…';b.disabled=true;}
+  try{ const r=await fetch('/poc/catalog?after='+encodeURIComponent(NEXT)); const j=await r.json(); render(j.items||[], true); setMore(j.next); }
+  catch(e){ if(b){b.textContent='Carregar mais ↓';b.disabled=false;} }
+  finally{ LOADING=false; }
 }
 let _qt=null;
 $('#q').oninput=e=>{
@@ -493,7 +513,7 @@ $('#q').oninput=e=>{
   _qt=setTimeout(async()=>{
     if(!q){ return CURCAT?pickCat(CURCAT):loadCatalog(); }
     $$('#chips button').forEach(b=>b.classList.remove('on')); CURCAT=null;
-    try{ const r=await fetch('/poc/search?q='+encodeURIComponent(q)); const j=await r.json(); render(j.items||[]); }catch(_){}
+    try{ const r=await fetch('/poc/search?q='+encodeURIComponent(q)); const j=await r.json(); render(j.items||[], false); setMore(null); }catch(_){}
   }, 250);
 };
 

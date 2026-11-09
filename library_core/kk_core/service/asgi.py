@@ -76,9 +76,9 @@ def create_app(client=None) -> FastAPI:
         return Response(icon_png(512), media_type="image/png")
 
     @app.get("/poc/catalog")
-    def poc_catalog(category: str | None = None) -> dict:
+    def poc_catalog(category: str | None = None, after: str | None = None) -> dict:
         from .poc import catalog
-        return catalog(_client(), category=category)
+        return catalog(_client(), category=category, after=after)
 
     @app.get("/poc/categories")
     def poc_categories() -> dict:
