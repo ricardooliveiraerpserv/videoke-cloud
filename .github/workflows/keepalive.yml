@@ -1,0 +1,37 @@
+name: keep-alive
+
+# Mantém o serviço da nuvem acordado (o plano free do Render hiberna após
+# ~15min sem tráfego). Pinga /health periodicamente. O cron do GitHub Actions
+# tem jitter, por isso o intervalo é curto (5min) para ficar sob a janela.
+#
+# Obs.: o GitHub desativa workflows agendados após 60 dias sem commits no repo.
+# Basta um commit ocasional (ou disparar manualmente em Actions) para reativar.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /health
+        run: |
+          URL="https://videoke-cloud-api-89pf.onrender.com/health"
+          for i in 1 2 3; do
+            code=$(curl -s -o /tmp/resp -w "%{http_code}" -m 60 "$URL" || echo 000)
+            echo "tentativa $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/resp; echo
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::warning::health não respondeu 200 após 3 tentativas (pode ser cold start)"
+          exit 0
