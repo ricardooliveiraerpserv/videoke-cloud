@@ -43,6 +43,13 @@ OPERATOR_HTML = """<!doctype html><html lang="pt-br"><head><meta charset="utf-8"
  button{font-size:15px;padding:10px 14px;border:0;border-radius:10px;font-weight:700;color:#fff}
  .ok{background:#123d1a;color:var(--ok)} .no{background:#3d1a12;color:var(--no)}
  .play{background:var(--accent)} a{color:var(--cyan)}
+ .pbbar{background:var(--card);border-radius:14px;padding:12px 14px;margin:8px 0}
+ .pbbar .tv{display:inline-block;background:var(--accent);color:#fff;padding:9px 14px;border-radius:10px;text-decoration:none;font-weight:700}
+ .pbbar #nowp{margin:10px 0;font-size:15px}
+ .trow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+ .trow button{background:#20304d}
+ .grp{display:flex;gap:6px;align-items:center;background:#0D1424;border-radius:10px;padding:4px 8px;font-size:13px;color:var(--muted)}
+ .grp button{padding:6px 11px} .grp b{min-width:38px;text-align:center;color:var(--fg);font-size:14px}
 </style></head><body>
  <h1>🎛️ Operador — Videokê Família Silva</h1>
  <div class="join">
@@ -51,12 +58,25 @@ OPERATOR_HTML = """<!doctype html><html lang="pt-br"><head><meta charset="utf-8"
      <div class="code" id="code">······</div>
      <div class="muted" id="url" style="font-size:13px"></div></div>
  </div>
+ <div class="sec">Player na TV</div>
+ <div class="pbbar">
+   <a class="tv" id="opentv" target="_blank" rel="noopener">📺 Abrir player na TV</a>
+   <div id="nowp" class="muted">Nada tocando.</div>
+   <div class="trow">
+     <button onclick="pb('prev')">⏮</button>
+     <button id="btpp" onclick="pb('toggle')">⏯</button>
+     <button onclick="pb('next')">⏭</button>
+     <button onclick="pb('restart')">↺</button>
+     <span class="grp">Tom <button onclick="pbTom(-1)">−</button><b id="vtom">0</b><button onclick="pbTom(1)">+</button></span>
+     <span class="grp">Ritmo <button onclick="pbRit(-5)">−</button><b id="vrit">100%</b><button onclick="pbRit(5)">+</button></span>
+   </div>
+ </div>
  <div class="sec">Pedidos pendentes</div>
  <div id="pend"><p class="muted">—</p></div>
  <div class="sec">Fila</div>
  <div id="queue"><p class="muted">—</p></div>
 <script>
-let SID=null, TOK=null;
+let SID=null, TOK=null, PBTOM=0, PBRIT=100;
 const $=s=>document.querySelector(s);
 function esc(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function jget(u){const r=await fetch(u);return r.json();}
@@ -67,8 +87,18 @@ async function init(){
   const join=location.origin+'/festa?c='+d.code;
   $('#url').textContent=join;
   $('#qr').src='/op/qr?code='+encodeURIComponent(d.code);
+  $('#opentv').href='/m?session='+SID;
   tick(); setInterval(tick, 3000);
 }
+function paintPB(st){ if(!st)return; PBTOM=st.tom; PBRIT=st.rit;
+  $('#vtom').textContent=(st.tom>0?'+':'')+st.tom; $('#vrit').textContent=st.rit+'%';
+  $('#btpp').textContent=st.paused?'▶':'⏯'; }
+function paintNow(n){ n=n||{};
+  $('#nowp').innerHTML = n.title ? ('▶ <b>'+esc(n.title)+'</b>'+(n.singer?(' — 🎤 '+esc(n.singer)):'')+(n.paused?' <span class="muted">(pausado)</span>':''))
+                                 : '<span class="muted">Nada tocando.</span>'; }
+async function pb(type,arg){ try{ const d=await jpost('/pb/cmd',{session:SID,token:TOK,type,arg}); if(d&&d.state)paintPB(d.state); }catch(e){} }
+function pbTom(dv){ pb('tom', Math.max(-5,Math.min(5,PBTOM+dv))); }
+function pbRit(dv){ pb('rit', Math.max(80,Math.min(120,PBRIT+dv))); }
 async function tick(){
   try{
     const p=await jget('/op/requests?session='+SID+'&token='+TOK);
@@ -79,10 +109,12 @@ async function tick(){
       || '<p class="muted">Nenhum pedido pendente.</p>';
   }catch(e){}
   try{
-    const q=await jget('/op/queue?session='+SID);
-    $('#queue').innerHTML=(q.items||[]).map((it,i)=>
-      `<div class="qi"><div><b>${i+1}. ${esc(it.singer)}</b><small>${esc(it.song_title)}</small></div>
-       <button class="play" onclick="location.href='/m?song='+encodeURIComponent('${it.song_id}')">▶ Tocar</button></div>`).join('')
+    const s=await jget('/pb/state?session='+SID); const st=s.state||{};
+    paintPB(st); paintNow(st.now);
+    const cur=(st.now&&typeof st.now.idx==='number')?st.now.idx:-1;
+    $('#queue').innerHTML=(s.queue||[]).map((it,i)=>
+      `<div class="qi"><div><b>${i===cur?'▶ ':''}${i+1}. ${esc(it.singer)}</b><small>${esc(it.song_title)}</small></div>
+       <button class="play" onclick="pb('goto',${i})">▶ Tocar</button></div>`).join('')
       || '<p class="muted">Fila vazia.</p>';
   }catch(e){}
 }

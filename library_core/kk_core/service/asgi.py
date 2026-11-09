@@ -158,6 +158,42 @@ def create_app(client=None) -> FastAPI:
         except Exception:  # noqa: BLE001
             return Response(b"", media_type="image/png")
 
+    # ---- G1: controle remoto + fila automática (cast por polling) ----
+    @app.get("/pb/state")
+    def pb_state(session: str) -> dict:   # player (TV) e controle leem daqui
+        from . import playback
+        st = playback.get_state(session)
+        try:
+            q = [_encode(it) for it in _client().queue_list(session)]
+        except Exception:  # noqa: BLE001
+            q = []
+        return {"state": st, "queue": q}
+
+    @app.post("/pb/cmd")
+    async def pb_cmd(req: Request):   # controle (operador) manda — autenticado
+        from . import playback
+        from .cloud_party import check_op
+        b = await req.json()
+        if not check_op(b.get("session", ""), b.get("token", "")):
+            return JSONResponse({"error": "não autorizado"}, status_code=403)
+        st = playback.cmd(b.get("session", ""), b.get("type", ""), b.get("arg"))
+        return {"ok": True, "state": st}
+
+    @app.post("/pb/ended")
+    async def pb_ended(req: Request) -> dict:   # player avisa fim → avança a fila
+        from . import playback
+        b = await req.json()
+        playback.ended(b.get("session", ""), b.get("idx", -1))
+        return {"ok": True}
+
+    @app.post("/pb/report")
+    async def pb_report(req: Request) -> dict:   # player reporta o que toca (display)
+        from . import playback
+        b = await req.json()
+        now = {k: b.get(k) for k in ("idx", "title", "singer", "t", "dur", "paused")}
+        playback.report(b.get("session", ""), now)
+        return {"ok": True}
+
     @app.get("/resolve/{song_id}")
     def resolve_ep(song_id: str):   # G1: fonte tocável (sync → threadpool do FastAPI)
         from .resolve import resolve_source
