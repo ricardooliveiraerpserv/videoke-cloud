@@ -239,6 +239,14 @@ def create_app(client=None) -> FastAPI:
             return JSONResponse({"error": "não autorizado"}, status_code=403)
         return {"items": download_queue.claim(limit)}
 
+    @app.post("/dl/cloudcache")
+    async def dl_cloudcache(req: Request):
+        from . import auth as _auth, download_queue
+        b = await req.json()
+        if _auth.role_for_token(f"Bearer {b.get('token','')}", tokens) != "admin":
+            return JSONResponse({"error": "não autorizado"}, status_code=403)
+        return download_queue.register_cloud_cache(b.get("sha256", ""), b.get("url", ""))
+
     @app.post("/dl/complete")
     async def dl_complete(req: Request):
         from . import auth as _auth, download_queue

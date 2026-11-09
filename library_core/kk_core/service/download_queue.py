@@ -88,6 +88,31 @@ def claim(limit: int = 5) -> list[dict]:
         return rows
 
 
+def register_cloud_cache(sha256: str, url: str) -> dict:
+    """Agente: avisa que o sha256 (já no catálogo via register_media) agora tem MP4
+    público no R2 em `url` → cria/atualiza o remote_source cloud_cache. Token-only,
+    sem senha do banco no desktop."""
+    if not sha256 or not url:
+        return {"ok": False, "detail": "sha256 e url obrigatórios"}
+    with _connect() as c, c.cursor() as cur:
+        cur.execute("SELECT id, song_id FROM media_files WHERE sha256=%s LIMIT 1", (sha256,))
+        row = cur.fetchone()
+        if not row:
+            return {"ok": False, "detail": "media_file não encontrado p/ esse sha256 (sincronize o catálogo antes)"}
+        mfid, sid = row
+        cur.execute("SELECT 1 FROM remote_sources WHERE media_file_id=%s AND kind='cloud_cache'", (mfid,))
+        if cur.fetchone():
+            cur.execute("UPDATE remote_sources SET uri=%s, status='ok', updated_at=now() "
+                        "WHERE media_file_id=%s AND kind='cloud_cache'", (url, mfid))
+        else:
+            cur.execute(
+                "INSERT INTO remote_sources (id,media_file_id,song_id,kind,uri,status,created_at,updated_at) "
+                "VALUES (%s,%s,%s,'cloud_cache',%s,'ok',now(),now())",
+                (str(uuid.uuid4()), mfid, sid, url))
+        c.commit()
+        return {"ok": True, "song_id": sid}
+
+
 def complete(request_id: str, status: str, song_id: str = "", detail: str = "") -> dict:
     with _connect() as c, c.cursor() as cur:
         _ensure(cur)
