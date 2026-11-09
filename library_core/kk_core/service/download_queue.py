@@ -88,6 +88,15 @@ def claim(limit: int = 5) -> list[dict]:
         return rows
 
 
+def cancel(request_id: str) -> dict:
+    """Remove um pedido da fila (menos os já concluídos)."""
+    with _connect() as c, c.cursor() as cur:
+        _ensure(cur)
+        cur.execute("DELETE FROM download_requests WHERE id=%s AND status<>'done'", (request_id,))
+        c.commit()
+    return {"ok": True}
+
+
 def register_cloud_cache(sha256: str, url: str) -> dict:
     """Agente: avisa que o sha256 (já no catálogo via register_media) agora tem MP4
     público no R2 em `url` → cria/atualiza o remote_source cloud_cache. Token-only,

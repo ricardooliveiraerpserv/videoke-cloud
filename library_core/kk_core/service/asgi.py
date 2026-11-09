@@ -232,6 +232,12 @@ def create_app(client=None) -> FastAPI:
         from . import download_queue
         return {"items": download_queue.list_status(status)}
 
+    @app.post("/dl/cancel")
+    async def dl_cancel(req: Request) -> dict:
+        from . import download_queue
+        b = await req.json()
+        return download_queue.cancel(b.get("id", ""))
+
     @app.get("/dl/claim")
     def dl_claim(token: str, limit: int = 5):
         from . import auth as _auth, download_queue

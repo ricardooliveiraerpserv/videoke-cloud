@@ -401,7 +401,10 @@ POC_HTML = r"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
   <button id="newbtn" onclick="toggleNew()" style="width:100%;margin:6px 0;padding:10px;background:#162447;color:#A78BFA;border:1px solid #2A3550;border-radius:10px;font-weight:700">➕ Nova música</button>
   <div id="newsong" style="display:none;background:#161E31;border-radius:12px;padding:12px;margin-bottom:8px">
     <input id="nsq" placeholder="Link do YouTube ou: Música - Artista" autocomplete="off" style="width:100%;font-size:15px;padding:10px;border-radius:10px;border:1px solid #2A3550;background:#0D1424;color:#E8ECF6">
-    <button id="nsbtn" onclick="submitNew()" style="width:100%;margin-top:8px;padding:11px;background:#8B5CF6;color:#fff;border:0;border-radius:10px;font-weight:700">Pedir ⬇</button>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button id="nsbtn" onclick="submitNew()" style="flex:1;padding:11px;background:#8B5CF6;color:#fff;border:0;border-radius:10px;font-weight:700">Baixar ⬇</button>
+      <button onclick="toggleNew()" style="padding:11px 16px;background:#20304d;color:#cbd5e1;border:0;border-radius:10px;font-weight:700">Cancelar</button>
+    </div>
     <div id="nsmsg" style="font-size:12px;color:#9AA6C0;min-height:16px;margin-top:6px"></div>
     <div id="nslist"></div>
   </div>
@@ -532,16 +535,21 @@ async function submitNew(){
   const body=isUrl(v)?{url:v,by}:{query:v,by};
   $('#nsbtn').disabled=true; $('#nsmsg').textContent='Enviando pedido…';
   try{ const r=await fetch('/dl/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const j=await r.json();
-    if(j.error){ $('#nsmsg').textContent='⚠️ '+j.error; } else { $('#nsq').value=''; $('#nsmsg').textContent='✅ Pedido enviado! O desktop baixa quando estiver online.'; }
+    if(j.error){ $('#nsmsg').textContent='⚠️ '+j.error; } else { $('#nsq').value=''; $('#nsmsg').textContent='✅ Enviado! O desktop baixa quando estiver online.'; }
   }catch(e){ $('#nsmsg').textContent='⚠️ Falha ao enviar o pedido.'; }
   finally{ $('#nsbtn').disabled=false; loadReqs(); }
 }
 async function loadReqs(){
   try{ const r=await fetch('/dl/list'); const j=await r.json();
     const badge={pending:'⏳ na fila',working:'⬇️ baixando',done:'✅ pronta',error:'⚠️ erro'};
-    $('#nslist').innerHTML=(j.items||[]).slice(0,8).map(it=>'<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #222c44;font-size:13px"><span>'+esc(it.title||it.query||it.url||'—')+'</span><span class="muted">'+(badge[it.status]||it.status)+'</span></div>').join('')||'<div class="muted" style="font-size:12px;padding-top:6px">Nenhum pedido ainda.</div>';
+    $('#nslist').innerHTML=(j.items||[]).slice(0,8).map(it=>{
+      const name=esc(it.title||it.query||it.url||'—');
+      const x=(it.status==='pending'||it.status==='error')?'<button onclick="cancelReq(\''+it.id+'\')" title="Cancelar" style="background:none;border:0;color:#F87171;font-size:16px;line-height:1;cursor:pointer;padding:0 2px">✕</button>':'';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #222c44;font-size:13px"><span>'+name+'</span><span style="display:flex;align-items:center;gap:10px"><span class="muted">'+(badge[it.status]||it.status)+'</span>'+x+'</span></div>';
+    }).join('')||'<div class="muted" style="font-size:12px;padding-top:6px">Nenhum pedido ainda.</div>';
   }catch(e){}
 }
+async function cancelReq(id){ try{ await fetch('/dl/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); loadReqs(); }catch(e){} }
 
 // ----- G2b: offline (baixar músicas p/ cantar sem internet)
 const VK_MEDIA='vk-media-v1';
