@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from kk_shared.events.bus import EventBus
 from kk_shared.platform.paths import data_dir
@@ -41,11 +41,61 @@ def create_app(client=None) -> FastAPI:
     def health() -> dict:
         return {"ok": True, "service": "videoke-cloud"}
 
+    # ---- F4+: PALCO RICO servido pela nuvem (tom/ritmo/letra; PC desligado) ----
     @app.get("/", response_class=HTMLResponse)
     @app.get("/m", response_class=HTMLResponse)
-    def mobile() -> str:   # F4: página do celular servida pela nuvem (PC desligado)
-        from .cloud_mobile import CLOUD_MOBILE_HTML
-        return CLOUD_MOBILE_HTML
+    def mobile() -> str:
+        from .cloud_stage import CLOUD_STAGE_HTML
+        return CLOUD_STAGE_HTML
+
+    @app.get("/poc/shifter.js")
+    def shifter_js() -> Response:   # SoundTouch (worklet) — pitch de alta qualidade
+        from .poc import SHIFTER_JS
+        return Response(SHIFTER_JS, media_type="application/javascript")
+
+    @app.get("/manifest.webmanifest")
+    def manifest() -> Response:
+        from .poc import MANIFEST
+        return Response(MANIFEST, media_type="application/manifest+json")
+
+    @app.get("/sw.js")
+    def sw_js() -> Response:
+        from .poc import SW_JS
+        return Response(SW_JS, media_type="application/javascript")
+
+    @app.get("/poc/icon-192.png")
+    def icon192() -> Response:
+        from .poc import icon_png
+        return Response(icon_png(192), media_type="image/png")
+
+    @app.get("/poc/icon-512.png")
+    def icon512() -> Response:
+        from .poc import icon_png
+        return Response(icon_png(512), media_type="image/png")
+
+    @app.get("/poc/catalog")
+    def poc_catalog(category: str | None = None) -> dict:
+        from .poc import catalog
+        return catalog(_client(), category=category)
+
+    @app.get("/poc/categories")
+    def poc_categories() -> dict:
+        from .poc import categories
+        return categories(_client())
+
+    @app.get("/poc/search")
+    def poc_search(q: str = "") -> dict:
+        from .poc import search
+        return search(_client(), q)
+
+    @app.get("/poc/resolve/{song_id}")
+    def poc_resolve(song_id: str, mode: str = "") -> dict:   # cloud-aware (hot-cache→Storage)
+        from .resolve import resolve_source
+        return resolve_source(_client(), song_id)
+
+    @app.post("/poc/metric")
+    async def poc_metric() -> dict:   # no-op na nuvem
+        return {"ok": True}
 
     @app.get("/resolve/{song_id}")
     def resolve_ep(song_id: str):   # G1: fonte tocável (sync → threadpool do FastAPI)
