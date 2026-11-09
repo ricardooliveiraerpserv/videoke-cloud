@@ -31,6 +31,16 @@ def _build() -> str:
         "catch(e){if(_ih){_ih.textContent='⚠️ Indisponível na nuvem — música ainda não cacheada';"
         "_ih.style.color='#FBBF24';}log('resolve: '+e.message);return;}",
     )
+    # produto: tira o marcador de versão do rodapé
+    html = html.replace("Videokê Família Silva · v19", "Videokê Família Silva")
+    # auto-play por ?song=<id> (operador toca a fila abrindo /m?song=…)
+    html = html.replace(
+        "loadCategories().then(loadCatalog);",
+        "loadCategories().then(loadCatalog);"
+        "(function(){var m=location.search.match(/[?&]song=([0-9a-fA-F-]{8,})/);if(!m)return;"
+        "var id=m[1];fetch('/poc/resolve/'+id).then(r=>r.json()).then(d=>{"
+        "SEL={id:id,title:(d&&d.title)||'',artist:(d&&d.artist)||''};startSinging();}).catch(()=>{});})();",
+    )
     return html
 
 

@@ -97,6 +97,67 @@ def create_app(client=None) -> FastAPI:
     async def poc_metric() -> dict:   # no-op na nuvem
         return {"ok": True}
 
+    # ---- Fase D na nuvem: festa com convidado + aprovação (operador por sessão) ----
+    @app.get("/operador", response_class=HTMLResponse)
+    def operador_page() -> str:
+        from .cloud_party import OPERATOR_HTML
+        return OPERATOR_HTML
+
+    @app.get("/festa", response_class=HTMLResponse)
+    def festa_page() -> str:
+        from .cloud_party import FESTA_HTML
+        return FESTA_HTML
+
+    @app.post("/op/open")
+    def op_open() -> dict:
+        from .cloud_party import op_token
+        gs = _client().open_guest_session()
+        sid = gs["session_id"]
+        return {"session_id": sid, "code": gs["code"], "op_token": op_token(sid)}
+
+    @app.get("/op/requests")
+    def op_requests(session: str, token: str) -> dict:
+        from .cloud_party import check_op
+        if not check_op(session, token):
+            return JSONResponse({"error": "não autorizado"}, status_code=403)
+        reqs = _client().list_requests(session, "pending")
+        return {"items": [_encode(r) for r in reqs]}
+
+    @app.post("/op/approve")
+    async def op_approve(req: Request) -> dict:
+        from .cloud_party import check_op
+        b = await req.json()
+        if not check_op(b.get("session", ""), b.get("token", "")):
+            return JSONResponse({"error": "não autorizado"}, status_code=403)
+        _client().approve_request(b["request"])
+        return {"ok": True}
+
+    @app.post("/op/reject")
+    async def op_reject(req: Request) -> dict:
+        from .cloud_party import check_op
+        b = await req.json()
+        if not check_op(b.get("session", ""), b.get("token", "")):
+            return JSONResponse({"error": "não autorizado"}, status_code=403)
+        _client().reject_request(b["request"])
+        return {"ok": True}
+
+    @app.get("/op/queue")
+    def op_queue(session: str) -> dict:
+        return {"items": [_encode(it) for it in _client().queue_list(session)]}
+
+    @app.get("/op/qr")
+    def op_qr(code: str, request: Request) -> Response:
+        import io
+        base = str(request.base_url).rstrip("/")
+        url = f"{base}/festa?c={code}"
+        try:
+            import segno
+            buf = io.BytesIO()
+            segno.make(url, error="m").save(buf, kind="png", scale=5, border=2)
+            return Response(buf.getvalue(), media_type="image/png")
+        except Exception:  # noqa: BLE001
+            return Response(b"", media_type="image/png")
+
     @app.get("/resolve/{song_id}")
     def resolve_ep(song_id: str):   # G1: fonte tocável (sync → threadpool do FastAPI)
         from .resolve import resolve_source
