@@ -33,6 +33,12 @@ def resolve_source(client, song_id: str, backend=None, *, max_height: int = 720)
         # já é uma URL tocável (Storage) — nada de yt-dlp
         return {"kind": "cloud_cache", "uri": cached, "source": cached,
                 "duration_s": v.duration_s, "title": sv.title, "artist": artist}
+    # na nuvem (datacenter) o YouTube barra ("not a bot"); enquanto não houver
+    # proxy/cookies, não adianta tentar o yt-dlp — responde na hora que falta cache.
+    import os
+    if os.environ.get("VK_SKIP_YOUTUBE"):
+        return {"error": "ainda não disponível na nuvem (música não cacheada)",
+                "not_cached": True, "title": sv.title, "artist": artist}
     src = youtube_src or v.source_url
     if not src:
         return {"error": "sem fonte remota (sem URL)"}

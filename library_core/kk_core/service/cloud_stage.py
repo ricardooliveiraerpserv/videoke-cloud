@@ -22,6 +22,15 @@ def _build() -> str:
     )
     # produto: esconde o log de debug do POC
     html = html.replace("</style>", "#log{display:none!important}\n</style>")
+    # feedback visível no intro: carregando / indisponível (não cacheada)
+    html = html.replace(
+        "try{info=await resolveSrc(SEL.id,MODE);}catch(e){log('❌ resolve: '+e.message);return;}",
+        "var _ih=document.querySelector('#iHint');"
+        "if(_ih){_ih.textContent='⏳ Carregando…';_ih.style.color='#A78BFA';}"
+        "try{info=await resolveSrc(SEL.id,MODE);}"
+        "catch(e){if(_ih){_ih.textContent='⚠️ Indisponível na nuvem — música ainda não cacheada';"
+        "_ih.style.color='#FBBF24';}log('resolve: '+e.message);return;}",
+    )
     return html
 
 
