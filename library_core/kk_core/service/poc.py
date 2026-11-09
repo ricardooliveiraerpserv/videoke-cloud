@@ -398,6 +398,13 @@ POC_HTML = r"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
 <div id="home">
   <div class="brand"><span class="logo">🎤</span><div><div class="bt">Videokê</div><div class="bs">Família Silva</div></div></div>
   <input id="q" placeholder="🔍 Buscar música ou artista…" autocomplete="off">
+  <button id="newbtn" onclick="toggleNew()" style="width:100%;margin:6px 0;padding:10px;background:#162447;color:#A78BFA;border:1px solid #2A3550;border-radius:10px;font-weight:700">➕ Nova música</button>
+  <div id="newsong" style="display:none;background:#161E31;border-radius:12px;padding:12px;margin-bottom:8px">
+    <input id="nsq" placeholder="Link do YouTube ou: Música - Artista" autocomplete="off" style="width:100%;font-size:15px;padding:10px;border-radius:10px;border:1px solid #2A3550;background:#0D1424;color:#E8ECF6">
+    <button id="nsbtn" onclick="submitNew()" style="width:100%;margin-top:8px;padding:11px;background:#8B5CF6;color:#fff;border:0;border-radius:10px;font-weight:700">Pedir ⬇</button>
+    <div id="nsmsg" style="font-size:12px;color:#9AA6C0;min-height:16px;margin-top:6px"></div>
+    <div id="nslist"></div>
+  </div>
   <div class="chips" id="chips"></div>
   <div class="grp" style="justify-content:flex-start;margin-top:8px"><span class="lb">TOM</span>
     <button class="pill" data-tom="-2">-2</button><button class="pill" data-tom="-1">-1</button>
@@ -515,6 +522,26 @@ $('#q').oninput=e=>{
     try{ const r=await fetch('/poc/search?q='+encodeURIComponent(q)); const j=await r.json(); render(j.items||[], false); setMore(null); }catch(_){}
   }, 250);
 };
+
+// ----- Nova música (pede p/ o desktop baixar do YouTube e publicar na nuvem)
+function toggleNew(){ const n=$('#newsong'); const show=n.style.display==='none'; n.style.display=show?'block':'none'; if(show) loadReqs(); }
+function isUrl(s){ return /youtube\.com|youtu\.be|^https?:\/\//i.test(s); }
+async function submitNew(){
+  const v=$('#nsq').value.trim(); if(!v){ $('#nsmsg').textContent='Digite um link ou "Música - Artista".'; return; }
+  const sn=$('#singer'); const by=(sn&&sn.value.trim())||'';
+  const body=isUrl(v)?{url:v,by}:{query:v,by};
+  $('#nsbtn').disabled=true; $('#nsmsg').textContent='Enviando pedido…';
+  try{ const r=await fetch('/dl/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const j=await r.json();
+    if(j.error){ $('#nsmsg').textContent='⚠️ '+j.error; } else { $('#nsq').value=''; $('#nsmsg').textContent='✅ Pedido enviado! O desktop baixa quando estiver online.'; }
+  }catch(e){ $('#nsmsg').textContent='⚠️ Falha ao enviar o pedido.'; }
+  finally{ $('#nsbtn').disabled=false; loadReqs(); }
+}
+async function loadReqs(){
+  try{ const r=await fetch('/dl/list'); const j=await r.json();
+    const badge={pending:'⏳ na fila',working:'⬇️ baixando',done:'✅ pronta',error:'⚠️ erro'};
+    $('#nslist').innerHTML=(j.items||[]).slice(0,8).map(it=>'<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #222c44;font-size:13px"><span>'+esc(it.title||it.query||it.url||'—')+'</span><span class="muted">'+(badge[it.status]||it.status)+'</span></div>').join('')||'<div class="muted" style="font-size:12px;padding-top:6px">Nenhum pedido ainda.</div>';
+  }catch(e){}
+}
 
 // ----- G2b: offline (baixar músicas p/ cantar sem internet)
 const VK_MEDIA='vk-media-v1';

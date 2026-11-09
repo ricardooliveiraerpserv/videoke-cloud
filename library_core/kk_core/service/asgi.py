@@ -214,6 +214,40 @@ def create_app(client=None) -> FastAPI:
         playback.report(b.get("session", ""), now)
         return {"ok": True}
 
+    # ---- Nova música: fila de pedidos (mobile enfileira; agente do desktop baixa) ----
+    @app.post("/dl/request")
+    async def dl_request(req: Request) -> dict:
+        from . import download_queue
+        b = await req.json()
+        url = (b.get("url") or "").strip()
+        query = (b.get("query") or "").strip()
+        if not url and not query:
+            return JSONResponse({"error": "informe um link ou nome da música"}, status_code=400)
+        return download_queue.enqueue(
+            url=url, query=query, title=(b.get("title") or "").strip(),
+            artist=(b.get("artist") or "").strip(), requested_by=(b.get("by") or "").strip())
+
+    @app.get("/dl/list")
+    def dl_list(status: str | None = None) -> dict:
+        from . import download_queue
+        return {"items": download_queue.list_status(status)}
+
+    @app.get("/dl/claim")
+    def dl_claim(token: str, limit: int = 5):
+        from . import auth as _auth, download_queue
+        if _auth.role_for_token(f"Bearer {token}", tokens) != "admin":
+            return JSONResponse({"error": "não autorizado"}, status_code=403)
+        return {"items": download_queue.claim(limit)}
+
+    @app.post("/dl/complete")
+    async def dl_complete(req: Request):
+        from . import auth as _auth, download_queue
+        b = await req.json()
+        if _auth.role_for_token(f"Bearer {b.get('token','')}", tokens) != "admin":
+            return JSONResponse({"error": "não autorizado"}, status_code=403)
+        return download_queue.complete(b.get("id", ""), b.get("status", "done"),
+                                       b.get("song_id", ""), b.get("detail", ""))
+
     @app.get("/resolve/{song_id}")
     def resolve_ep(song_id: str):   # G1: fonte tocável (sync → threadpool do FastAPI)
         from .resolve import resolve_source
