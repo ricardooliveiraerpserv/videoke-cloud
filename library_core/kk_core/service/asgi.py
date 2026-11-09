@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from kk_shared.events.bus import EventBus
 from kk_shared.platform.paths import data_dir
@@ -40,6 +40,12 @@ def create_app(client=None) -> FastAPI:
     @app.get("/health")
     def health() -> dict:
         return {"ok": True, "service": "videoke-cloud"}
+
+    @app.get("/", response_class=HTMLResponse)
+    @app.get("/m", response_class=HTMLResponse)
+    def mobile() -> str:   # F4: página do celular servida pela nuvem (PC desligado)
+        from .cloud_mobile import CLOUD_MOBILE_HTML
+        return CLOUD_MOBILE_HTML
 
     @app.get("/resolve/{song_id}")
     def resolve_ep(song_id: str):   # G1: fonte tocável (sync → threadpool do FastAPI)
