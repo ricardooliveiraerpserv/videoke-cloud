@@ -145,6 +145,24 @@ def create_app(client=None) -> FastAPI:
     def op_queue(session: str) -> dict:
         return {"items": [_encode(it) for it in _client().queue_list(session)]}
 
+    @app.post("/op/clear")
+    async def op_clear(req: Request) -> dict:   # operador esvazia a fila
+        from . import playback
+        from .cloud_party import check_op
+        b = await req.json()
+        if not check_op(b.get("session", ""), b.get("token", "")):
+            return JSONResponse({"error": "não autorizado"}, status_code=403)
+        cli = _client()
+        removed = 0
+        for it in cli.queue_list(b.get("session", "")):
+            try:
+                cli.remove_queue_item(it.id)
+                removed += 1
+            except Exception:  # noqa: BLE001
+                pass
+        playback.cmd(b.get("session", ""), "goto", 0)  # cursor volta ao início
+        return {"ok": True, "removed": removed}
+
     @app.get("/op/qr")
     def op_qr(code: str, request: Request) -> Response:
         import io

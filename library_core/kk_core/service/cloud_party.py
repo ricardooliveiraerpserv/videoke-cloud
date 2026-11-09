@@ -73,7 +73,8 @@ OPERATOR_HTML = """<!doctype html><html lang="pt-br"><head><meta charset="utf-8"
  </div>
  <div class="sec">Pedidos pendentes</div>
  <div id="pend"><p class="muted">—</p></div>
- <div class="sec">Fila</div>
+ <div class="sec" style="display:flex;justify-content:space-between;align-items:center">Fila
+   <button id="btclear" class="no" style="font-size:12px;padding:5px 11px" onclick="clearQueue()">🗑 Limpar fila</button></div>
  <div id="queue"><p class="muted">—</p></div>
 <script>
 let SID=null, TOK=null, PBTOM=0, PBRIT=100;
@@ -119,6 +120,15 @@ async function tick(){
   }catch(e){}
 }
 async function act(kind,id){ await jpost('/op/'+kind,{session:SID,token:TOK,request:id}); tick(); }
+let clearArm=false, clearTimer=null;
+function resetClearBtn(){ const b=$('#btclear'); if(!b)return; clearArm=false; b.textContent='🗑 Limpar fila'; b.classList.add('no'); }
+async function clearQueue(){
+  const b=$('#btclear'); if(!b)return;
+  if(!clearArm){ clearArm=true; b.textContent='Confirmar?'; b.classList.remove('no');
+    clearTimer=setTimeout(resetClearBtn,3000); return; }
+  clearTimeout(clearTimer); resetClearBtn();
+  await jpost('/op/clear',{session:SID,token:TOK}); tick();
+}
 init();
 </script></body></html>"""
 
